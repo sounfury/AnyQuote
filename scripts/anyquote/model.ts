@@ -58,6 +58,7 @@ const HITOKOTO_TYPE_MAP: Record<string, string> = {
 const CACHE_KEY = "anyquote_cache_queue"
 const SETTINGS_KEY = "anyquote_settings"
 const MAX_QUEUE_SIZE = 5
+const SHARED_STORAGE_OPTIONS = { shared: true } as const
 
 export const DEFAULT_SOURCE: QuoteSourceConfig = {
     id: "default",
@@ -117,6 +118,30 @@ function normalizeLength(value: unknown, fallbackLength: number): number {
 
 function isValidHttpUrl(value: string): boolean {
     return /^https?:\/\/\S+$/i.test(value.trim())
+}
+
+/**
+ * 优先从共享存储域读取数据；如果共享域还没有旧版本数据，则从当前脚本私有域迁移一份过去。
+ */
+function getSharedStorageValue<T>(key: string): T | null {
+    const sharedValue = Storage.get<T>(key, SHARED_STORAGE_OPTIONS)
+    if (sharedValue !== null) {
+        return sharedValue
+    }
+
+    const privateValue = Storage.get<T>(key)
+    if (privateValue !== null) {
+        Storage.set(key, privateValue, SHARED_STORAGE_OPTIONS)
+    }
+
+    return privateValue
+}
+
+/**
+ * 统一写入共享存储域，保证详情页脚本和 Widget 脚本拿到同一份数据。
+ */
+function setSharedStorageValue<T>(key: string, value: T): void {
+    Storage.set(key, value, SHARED_STORAGE_OPTIONS)
 }
 
 function normalizeSource(source: unknown): QuoteSourceConfig | null {
@@ -189,7 +214,7 @@ function normalizeSettings(rawSettings?: LegacyAppSettings | null): AppSettings 
 }
 
 function getStoredQueue(): QuoteItem[] {
-    const queue = Storage.get<QuoteItem[]>(CACHE_KEY)
+    const queue = getSharedStorageValue<QuoteItem[]>(CACHE_KEY)
     if (!Array.isArray(queue)) return []
 
     // 只保留最小可展示结构，坏数据不会再污染当前显示和后续刷新。
@@ -256,7 +281,7 @@ export class QuoteModel {
     }
 
     static saveQueue(queue: QuoteItem[]) {
-        Storage.set(CACHE_KEY, queue.slice(0, MAX_QUEUE_SIZE))
+        setSharedStorageValue(CACHE_KEY, queue.slice(0, MAX_QUEUE_SIZE))
     }
 
     static clearQueue() {
@@ -264,11 +289,11 @@ export class QuoteModel {
     }
 
     static getSettings(): AppSettings {
-        return normalizeSettings(Storage.get<LegacyAppSettings>(SETTINGS_KEY))
+        return normalizeSettings(getSharedStorageValue<LegacyAppSettings>(SETTINGS_KEY))
     }
 
     static saveSettings(settings: AppSettings) {
-        Storage.set(SETTINGS_KEY, normalizeSettings(settings))
+        setSharedStorageValue(SETTINGS_KEY, normalizeSettings(settings))
     }
 
     static saveSources(customSources: QuoteSourceConfig[], activeSourceId?: QuoteSourceId): AppSettings {

@@ -1,4 +1,5 @@
 import {
+    Script,
     VStack,
     HStack,
     Text,
@@ -19,6 +20,9 @@ function getFontSize(family: WidgetFamily): number {
     }
 }
 
+/**
+ * Widget 始终从共享缓存中读取当前句子，保证和详情页展示同一份最新数据。
+ */
 function WidgetView() {
     const quote = QuoteModel.getCurrentQuote()
     const family = Widget.family
@@ -97,3 +101,4 @@ function WidgetView() {
 }
 
 Widget.present(<WidgetView />)
+Script.exit()

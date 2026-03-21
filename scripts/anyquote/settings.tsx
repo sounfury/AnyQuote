@@ -12,6 +12,7 @@ import {
     Toolbar,
     ToolbarItem,
     VStack,
+    Widget,
     useState,
 } from "scripting"
 
@@ -216,8 +217,11 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
     const customSources = settings.customSources
     const isBusy = isRefreshing || isSavingSource || isApplyingSource
 
+    /**
+     * 配置落盘后立即通知系统重载 Widget，避免主屏幕继续显示旧时间线。
+     */
     function reloadWidget() {
-        ; (globalThis as any).Widget?.reloadAll()
+        Widget.reloadAll()
     }
 
     function syncSettings(nextSettings: AppSettings) {
