@@ -1,0 +1,39 @@
+{
+  "author" : null,
+  "description" : null,
+  "contributors" : [
+
+  ],
+  "localizedNames" : {
+    "it" : "",
+    "ja" : "",
+    "es" : "",
+    "ru" : "",
+    "en" : "",
+    "zh" : "",
+    "fr" : "",
+    "pt" : "",
+    "de" : ""
+  },
+  "version" : "1.0.0",
+  "name" : "anyquote",
+  "remoteResource" : null,
+  "localizedDescriptions" : {
+    "it" : "",
+    "ja" : "",
+    "es" : "",
+    "ru" : "",
+    "en" : "",
+    "zh" : "",
+    "fr" : "",
+    "pt" : "",
+    "de" : ""
+  },
+  "intentInputTypes" : [
+
+  ],
+  "runInApp" : false,
+  "icon" : "square.2.layers.3d.fill",
+  "color" : "rgba(128, 138, 148,1)",
+  "iconImage" : null
+}
