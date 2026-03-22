@@ -1,5 +1,6 @@
 import {
     Button,
+    ForEach,
     HStack,
     List,
     NavigationStack,
@@ -27,7 +28,6 @@ import {
 
 declare const Dialog: {
     alert(options: { message: string, title?: string, buttonLabel?: string }): Promise<void>
-    confirm(options: { message: string, title?: string, cancelLabel?: string, confirmLabel?: string }): Promise<boolean>
 }
 
 type SettingsPageProps = {
@@ -42,10 +42,16 @@ const intervalLabels: Record<number, string> = {
     360: "6 小时",
 }
 
+/**
+ * 为新增来源生成稳定且足够唯一的本地 id。
+ */
 function buildSourceId(): string {
     return `custom-source-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+/**
+ * 统一提取错误信息，避免对话框里出现空白提示。
+ */
 function getErrorMessage(error: unknown, fallback: string): string {
     if (error instanceof Error && error.message.trim().length > 0) {
         return error.message
@@ -54,6 +60,9 @@ function getErrorMessage(error: unknown, fallback: string): string {
     return fallback
 }
 
+/**
+ * 在保存前校验来源表单，保证名称和 URL 都可用。
+ */
 function validateSourceInput(name: string, url: string): { name: string, url: string } | { error: string } {
     const trimmedName = name.trim()
     const trimmedUrl = url.trim()
@@ -76,7 +85,9 @@ function validateSourceInput(name: string, url: string): { name: string, url: st
     }
 }
 
-// 来源行既承担状态展示，也承担切换 / 编辑 / 删除入口，所以单独抽成组件。
+/**
+ * 来源行采用“点按编辑 + 左滑删除 + 右侧切换”的常见交互，减少误触删除。
+ */
 function SourceRow({
     source,
     isActive,
@@ -84,7 +95,6 @@ function SourceRow({
     disabled,
     onUse,
     onEdit,
-    onDelete,
 }: {
     source: QuoteSourceConfig
     isActive: boolean
@@ -92,44 +102,53 @@ function SourceRow({
     disabled: boolean
     onUse: () => void
     onEdit?: () => void
-    onDelete?: () => void
 }) {
+    const canEdit = !isDefault && !disabled && typeof onEdit === "function"
+    const helperText = isDefault ? "内置默认来源" : "点按进入编辑，左滑可删除"
+
     return (
-        <VStack alignment="leading" spacing={12} padding={{ top: 6, bottom: 6 }}>
-            <HStack frame={{ maxWidth: Infinity }} alignment="top">
-                <VStack alignment="leading" spacing={4} frame={{ maxWidth: Infinity }}>
+        <HStack alignment="top" spacing={12} padding={{ top: 6, bottom: 6 }}>
+            <VStack
+                alignment="leading"
+                spacing={4}
+                frame={{ maxWidth: Infinity }}
+                contentShape={canEdit ? "rect" : undefined}
+                onTapGesture={canEdit ? onEdit : undefined}
+            >
+                <HStack spacing={8}>
                     <Text font={16} fontWeight="semibold">
                         {source.name}
                     </Text>
-                    <Text font={12} foregroundStyle="secondaryLabel">
-                        {source.url}
-                    </Text>
-                </VStack>
-                {isActive ? (
-                    <Text font={12} fontWeight="semibold" foregroundStyle="rgba(37, 99, 235, 1)">
-                        使用中
-                    </Text>
-                ) : (
-                    <Button title="使用" action={onUse} disabled={disabled} />
-                )}
-            </HStack>
+                    {isDefault ? (
+                        <Text font={11} foregroundStyle="secondaryLabel">
+                            默认
+                        </Text>
+                    ) : null}
+                </HStack>
+                <Text font={12} foregroundStyle="secondaryLabel">
+                    {source.url}
+                </Text>
+                <Text font={11} foregroundStyle="tertiaryLabel">
+                    {helperText}
+                </Text>
+            </VStack>
 
-            <HStack spacing={12}>
-                {!isDefault ? (
-                    <HStack spacing={12}>
-                        <Button title="编辑" action={onEdit ?? (() => {})} disabled={disabled} />
-                        <Button title="删除" action={onDelete ?? (() => {})} disabled={disabled} />
-                    </HStack>
-                ) : (
-                    <Text font={12} foregroundStyle="secondaryLabel">
-                        内置默认来源
-                    </Text>
-                )}
-            </HStack>
-        </VStack>
+            <Spacer />
+
+            {isActive ? (
+                <Text font={12} fontWeight="semibold" foregroundStyle="rgba(37, 99, 235, 1)">
+                    使用中
+                </Text>
+            ) : (
+                <Button title="使用" action={onUse} disabled={disabled} />
+            )}
+        </HStack>
     )
 }
 
+/**
+ * 来源编辑弹窗同时承载新增与编辑，并把接口兼容说明收口到表单内。
+ */
 function SourceEditorSheet({
     editingSource,
     sourceName,
@@ -172,7 +191,7 @@ function SourceEditorSheet({
                     </Toolbar>
                 }
             >
-                <Section header={<Text>基本信息</Text>} footer={<Text>外部 API 需要返回兼容一言的字段结构。</Text>}>
+                <Section header={<Text>基本信息</Text>} footer={<Text>保存后会立即按这里填写的地址拉取内容。</Text>}>
                     <TextField
                         title="名称"
                         value={sourceName}
@@ -189,6 +208,17 @@ function SourceEditorSheet({
                     />
                 </Section>
 
+                <Section header={<Text>兼容字段</Text>} footer={<Text>正文字段至少返回一个，其余字段会用于补充来源、作者和分类展示。</Text>}>
+                    <VStack alignment="leading" spacing={6}>
+                        <Text font={13}>
+                            正文：`hitokoto` 或 `content`
+                        </Text>
+                        <Text font={13}>
+                            可选：`from` / `from_who` / `type` / `length`
+                        </Text>
+                    </VStack>
+                </Section>
+
                 {sourceError ? (
                     <Section header={<Text>校验提示</Text>}>
                         <Text foregroundStyle="rgba(185, 28, 28, 1)">
@@ -201,6 +231,9 @@ function SourceEditorSheet({
     )
 }
 
+/**
+ * 设置页负责刷新策略、来源管理以及与主页面数据的同步。
+ */
 export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
     const [settings, setSettings] = useState<AppSettings>(() => QuoteModel.getSettings())
     const [isRefreshing, setIsRefreshing] = useState(false)
@@ -224,10 +257,16 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
         Widget.reloadAll()
     }
 
+    /**
+     * 统一同步设置状态，减少散落的 setState。
+     */
     function syncSettings(nextSettings: AppSettings) {
         setSettings(nextSettings)
     }
 
+    /**
+     * 保存自动刷新配置，并立刻刷新本地状态。
+     */
     function saveRefreshSettings(nextAutoRefresh: boolean, nextInterval: number) {
         const nextSettings: AppSettings = {
             ...settings,
@@ -239,7 +278,9 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
         syncSettings(QuoteModel.getSettings())
     }
 
-    // 统一复用新增和编辑，避免两个表单状态分叉。
+    /**
+     * 统一复用新增和编辑弹窗状态，避免两个表单状态分叉。
+     */
     function resetEditorState() {
         setEditingSource(null)
         setSourceName("")
@@ -247,11 +288,17 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
         setSourceError("")
     }
 
+    /**
+     * 打开新增来源弹窗，并重置为干净表单。
+     */
     function openCreateSourceEditor() {
         resetEditorState()
         setShowSourceEditor(true)
     }
 
+    /**
+     * 打开编辑弹窗，并预填当前来源配置。
+     */
     function openEditSourceEditor(source: QuoteSourceConfig) {
         setEditingSource(source)
         setSourceName(source.name)
@@ -260,11 +307,17 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
         setShowSourceEditor(true)
     }
 
+    /**
+     * 关闭来源编辑弹窗，并清理暂存表单内容。
+     */
     function closeSourceEditor() {
         setShowSourceEditor(false)
         resetEditorState()
     }
 
+    /**
+     * 切换来源后统一做缓存清理、强刷和失败兜底，避免详情页与 Widget 展示不一致。
+     */
     async function applySourceChange(saveAction: () => AppSettings | Promise<AppSettings>): Promise<boolean> {
         const previousQueue = QuoteModel.getQueue()
         const previousQuote = QuoteModel.getCurrentQuote()
@@ -299,6 +352,9 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
         }
     }
 
+    /**
+     * 手动强刷当前来源，并在失败时回退到之前的展示内容。
+     */
     async function handleImmediateRefresh() {
         const previousQueue = QuoteModel.getQueue()
         const previousQuote = QuoteModel.getCurrentQuote()
@@ -327,6 +383,9 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
         }
     }
 
+    /**
+     * 保存来源配置；新增来源默认设为当前来源，编辑当前来源时会立即重拉内容。
+     */
     async function handleSaveSource() {
         const validated = validateSourceInput(sourceName, sourceUrl)
         if ("error" in validated) {
@@ -370,34 +429,41 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
         }
     }
 
+    /**
+     * 将指定来源切为当前来源，并同步刷新展示内容。
+     */
     async function handleUseSource(sourceId: string) {
         if (settings.activeSourceId === sourceId) return
         await applySourceChange(() => QuoteModel.setActiveSource(sourceId))
     }
 
+    /**
+     * 一键切回默认来源，并重建当前展示内容。
+     */
     async function handleResetToDefault() {
         if (settings.activeSourceId === DEFAULT_SOURCE.id) return
         await applySourceChange(() => QuoteModel.resetToDefaultSource())
     }
 
-    async function handleDeleteSource(source: QuoteSourceConfig) {
-        const confirmed = await Dialog.confirm({
-            title: "删除来源",
-            message: `确定删除“${source.name}”吗？`,
-            cancelLabel: "取消",
-            confirmLabel: "删除",
-        })
+    /**
+     * 处理列表左滑删除；若删的是当前来源，则自动回退到默认来源并刷新内容。
+     */
+    async function handleDeleteSources(indices: number[]) {
+        const sourcesToDelete = [...indices]
+            .sort((left, right) => right - left)
+            .map((index) => customSources[index])
+            .filter((source): source is QuoteSourceConfig => source != null)
 
-        if (!confirmed) return
+        for (const source of sourcesToDelete) {
+            // 删除当前来源时要顺带回退到默认源，否则 activeSourceId 会指向一个不存在的配置。
+            if (QuoteModel.getSettings().activeSourceId === source.id) {
+                await applySourceChange(() => QuoteModel.deleteCustomSource(source.id))
+                continue
+            }
 
-        // 删除当前来源时要顺带回退到默认源，否则 activeSourceId 会指向一个不存在的配置。
-        if (settings.activeSourceId === source.id) {
-            await applySourceChange(() => QuoteModel.deleteCustomSource(source.id))
-            return
+            const nextSettings = QuoteModel.deleteCustomSource(source.id)
+            syncSettings(nextSettings)
         }
-
-        const nextSettings = QuoteModel.deleteCustomSource(source.id)
-        syncSettings(nextSettings)
     }
 
     return (
@@ -480,10 +546,7 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
                     />
                 </Section>
 
-                <Section
-                    header={<Text>数据来源</Text>}
-                    footer={<Text>兼容字段：`hitokoto` 或 `content` 为正文，`from` / `from_who` / `type` / `length` 为可选字段。</Text>}
-                >
+                <Section header={<Text>数据来源</Text>}>
                     <VStack alignment="leading" spacing={4}>
                         <Text font={13} foregroundStyle="secondaryLabel">
                             当前来源
@@ -511,25 +574,35 @@ export function SettingsPage({ onDismiss, onRefreshQuote }: SettingsPageProps) {
                     footer={
                         customSources.length === 0
                             ? <Text>还没有添加自定义来源。</Text>
-                            : <Text>新增来源后会立即设为当前来源；编辑当前来源时也会立即刷新内容。</Text>
+                            : <Text>点按来源进入编辑；左滑可删除；切换为当前来源后会立即刷新内容。</Text>
                     }
                 >
-                    {customSources.length > 0 ? customSources.map((source) => (
-                        <SourceRow
-                            key={source.id}
-                            source={source}
-                            isActive={settings.activeSourceId === source.id}
-                            isDefault={false}
-                            disabled={isBusy}
-                            onUse={() => {
-                                void handleUseSource(source.id)
+                    {customSources.length > 0 ? (
+                        <ForEach
+                            count={customSources.length}
+                            itemBuilder={(index) => {
+                                const source = customSources[index]
+
+                                return (
+                                    <SourceRow
+                                        key={source.id}
+                                        source={source}
+                                        isActive={settings.activeSourceId === source.id}
+                                        isDefault={false}
+                                        disabled={isBusy}
+                                        onUse={() => {
+                                            void handleUseSource(source.id)
+                                        }}
+                                        onEdit={() => openEditSourceEditor(source)}
+                                    />
+                                )
                             }}
-                            onEdit={() => openEditSourceEditor(source)}
-                            onDelete={() => {
-                                void handleDeleteSource(source)
+                            onDelete={(indices) => {
+                                if (isBusy) return
+                                void handleDeleteSources(indices)
                             }}
                         />
-                    )) : (
+                    ) : (
                         <Text foregroundStyle="secondaryLabel">
                             添加后就可以在多个来源之间切换。
                         </Text>
